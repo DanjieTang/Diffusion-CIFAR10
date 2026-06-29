@@ -1,5 +1,7 @@
 import argparse
+import datetime
 import os
+import uuid
 
 import torch
 import torch.nn as nn
@@ -32,8 +34,12 @@ def parse_args():
     parser.add_argument("--imagenet_path", type=str, default="./ImagenetHighResolution",
                         help="Root of local ImageNet class folders (ImageFolder layout).")
     parser.add_argument("--image_size", type=int, default=32)
+    parser.add_argument("--min_image_size", type=int, default=0,
+                        help="Drop ImageNet images whose shorter edge is below this (0 disables). "
+                             "Avoids training on upscaled, blurry images. No effect on CIFAR10.")
     parser.add_argument("--num_workers", type=int, default=4)
-    parser.add_argument("--output_dir", type=str, default="./runs")
+    parser.add_argument("--output_dir", type=str, default="./train_log",
+                        help="Root log folder. Each training run gets its own timestamped subfolder.")
 
     # Model Architecture
     parser.add_argument("--patch_size", type=int, default=2)
@@ -119,7 +125,14 @@ def sample_preview(diffusion, ema_model, num_classes, args, path):
 def main():
     args = parse_args()
     torch.manual_seed(args.seed)
-    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Each run (including each sweep trial) gets its own subfolder under the log root.
+    # The timestamp + short random suffix keep concurrent sweep trials from colliding.
+    run_tag = args.run_name or args.dataset
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(args.output_dir, f"{run_tag}_{stamp}_{uuid.uuid4().hex[:6]}")
+    os.makedirs(run_dir, exist_ok=True)
+    print(f"Run directory: {run_dir}")
 
     use_wandb = args.project is not None and args.entity is not None
     if use_wandb:
@@ -128,6 +141,7 @@ def main():
     train_loader, num_classes = prepare_dataset(
         args.dataset, args.data_root, args.imagenet_path,
         args.image_size, args.batch_size, args.num_workers,
+        min_image_size=args.min_image_size,
     )
     print(f"Dataset: {args.dataset} | classes: {num_classes} | batches/epoch: {len(train_loader)}")
 
@@ -179,14 +193,14 @@ def main():
                 run.log({"train_loss": loss.item(), "lr": optimizer.param_groups[0]["lr"]}, step=global_step)
 
         if (epoch + 1) % args.sample_every == 0:
-            sample_path = os.path.join(args.output_dir, f"samples_epoch_{epoch + 1}.png")
+            sample_path = os.path.join(run_dir, f"samples_epoch_{epoch + 1}.png")
             images = sample_preview(diffusion, ema.ema_model, num_classes, args, sample_path)
             print(f"Saved preview samples -> {sample_path}")
             if use_wandb:
                 run.log({"samples": wandb.Image(images)}, step=global_step)
 
         if (epoch + 1) % args.ckpt_every == 0 or epoch + 1 == args.epochs:
-            ckpt_path = os.path.join(args.output_dir, f"dit_{args.dataset}_epoch_{epoch + 1}.pth")
+            ckpt_path = os.path.join(run_dir, f"dit_{args.dataset}_epoch_{epoch + 1}.pth")
             save_checkpoint(ckpt_path, model, ema, optimizer, scheduler, epoch, global_step, vars(args))
 
     if use_wandb:
