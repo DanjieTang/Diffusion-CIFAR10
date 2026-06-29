@@ -1,0 +1,18 @@
+[project]
+name = "dit-cifar10-imagenet"
+version = "0.1.0"
+description = "Pixel-space class-conditional Diffusion Transformer (DiT) for CIFAR10 and ImageNet, trained from scratch."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "numpy>=1.24",
+    "tqdm>=4.65",
+    "matplotlib>=3.7",
+    "wandb>=0.16",
+]
+
+[tool.uv]
+# Keep the lockfile in the repo for reproducible environments.
+package = false

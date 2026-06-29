@@ -5,6 +5,21 @@ __pycache__/
 
 ImagenetLowResolution/
 
+# --- DiT project ---
+# Datasets
+data/
+ImagenetHighResolution/
+# Training outputs
+runs/
+*.pth
+*.pth.tar
+*.png
+sweep_progress.json
+wandb/
+uv.lock
+# Reference project (kept locally for style reference only, not part of this repo)
+GemmaLLM/
+
 # C extensions
 *.so
 

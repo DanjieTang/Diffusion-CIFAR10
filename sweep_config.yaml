@@ -1,0 +1,44 @@
+# Hyperparameter sweep for train.py.
+# Every key must match a --flag in train.py. Scalars are fixed across all runs;
+# lists become sweep dimensions and are expanded as a full grid (cartesian product).
+# Keys with a single-element list (or scalar) stay constant and are not added to run names.
+# Run with:  uv run python run_sweep.py --config sweep_config.yaml
+
+# Fixed dataset settings
+dataset: cifar10
+data_root: ./data
+image_size: 32
+num_workers: 4
+output_dir: ./runs
+
+# Fixed diffusion settings
+num_timesteps: 1000
+beta_schedule: linear
+sampler: ddim
+num_sampling_steps: 50
+cfg_scale: 4.0
+
+# Fixed model depth / width (sweep patch_size and lr below)
+hidden_size: 384
+depth: 12
+num_heads: 6
+mlp_ratio: 4.0
+class_dropout_prob: 0.1
+
+# Fixed training settings
+epochs: 100
+ema_decay: 0.9999
+weight_decay: 0.0
+grad_clip: 1.0
+warmup_steps: 500
+
+# Sweep dimensions
+patch_size: 4
+
+lr: 0.0003
+
+batch_size: 128
+
+# Optional W&B logging. Set both to enable.
+project: null
+entity: null

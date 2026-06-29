@@ -1,40 +1,83 @@
-# Generated CIFAR10 Images Using Diffusion Model: Example Outputs
-<img width="857" alt="Diffusion CIFAR10" src="https://github.com/DanjieTang/MyTripOnDeepLearning/assets/37476565/5e7f6566-4a10-4f88-a8ad-086487beee71">
+# Pixel-space DiT — CIFAR10 & ImageNet
 
-## Papers I've read for this repo
-### Diffusion Model
+A class-conditional **Diffusion Transformer (DiT)** trained from scratch in pixel space
+(no pretrained VAE, no pretrained anything). DDPM epsilon-prediction with classifier-free
+guidance, adaLN-Zero conditioning, and EMA weights. Supports CIFAR10 and a local ImageNet
+folder, driven entirely by command-line arguments with a YAML grid-sweep runner.
 
-    a)Deep Unsupervised Learning using Nonequilibrium Thermodynamics
-   
-    b)Attention U-Net: Learning Where to Look for the Pancreas
-   
-    c)SAGAN: Self-Attention Generative Adversarial Networks
-   
-    d)BigGAN: Large Scale GAN Training for High Fidelity Natural Image Synthesis
-   
-    e)Pre-Norm Transformers: On Layer Normalization in the Transformer Architecture
-   
-    f)DDIM: DENOISING DIFFUSION IMPLICIT MODELS
-   
-    g)ViT: An Image Is Worth 16X16 Words: Transformers For Image Recognition At Scale
-   
-    h)IDDPM: Improved Denoising Diffusion Probabilistic Models
-   
-    i)DDPM: Denoising Diffusion Probabilistic Models
-   
-    j)Diffusion Models Beat GANs on Image Synthesis
-   
-    k)GroupNorm: Group Normalization
-   
-    l)EMA: Weight-averaged consistency targets improve semi-supervised deep learning results
-   
-    m)CFG: Classifier-Fredd Diffusion Guidance
+## Project layout
 
+| File | Purpose |
+|------|---------|
+| `model.py` | The DiT: patch embed, timestep/label embedders, adaLN-Zero blocks, sin-cos pos embed. |
+| `diffusion.py` | `GaussianDiffusion`: beta schedules, `q_sample`, training loss, DDPM + DDIM sampling with CFG. |
+| `data.py` | DataLoaders for CIFAR10 and local ImageNet (`ImageFolder`). |
+| `checkpoint.py` | EMA wrapper + checkpoint save/load. |
+| `train.py` | Argparse training entry point (W&B optional, EMA, preview samples, checkpoints). |
+| `sample.py` | Generate images from a trained checkpoint. |
+| `run_sweep.py` | Run `train.py` over every combination in a sweep YAML, resumable. |
+| `sweep_config.yaml` | Example sweep definition. |
+| `legacy_code/` | The original Jupyter-notebook implementations, kept for reference. |
 
-## Use these link to download my models
-Student model: https://drive.google.com/file/d/1Ov23itCd3s2dGu7PZeMnz6gK-vtOVpA5/view?usp=share_link
+## Setup (uv)
 
-Teacher model: https://drive.google.com/file/d/1EqP4qJkVt3abh0Vzxr-tDwh7zYymwLT9/view?usp=share_link
+```bash
+uv sync                      # create .venv and install from pyproject.toml
+```
 
-## Use this link to the google colab for inference or download Diffusion_CIFAR10_Inference.ipynb. Download the model before inference
-https://colab.research.google.com/drive/1es0CeqwReIfRxv-oJcAKtHNgZiR_N-qR?usp=sharing
+Run anything with `uv run python ...` (no manual venv activation needed).
+
+## Train
+
+CIFAR10 (32×32):
+
+```bash
+uv run python train.py --dataset cifar10 --image_size 32 --patch_size 2 \
+    --hidden_size 384 --depth 12 --num_heads 6 --batch_size 128 --epochs 100
+```
+
+ImageNet from a local folder (`ImagenetHighResolution/<class>/<image>.jpeg`):
+
+```bash
+uv run python train.py --dataset imagenet --imagenet_path ./ImagenetHighResolution \
+    --image_size 64 --patch_size 4 --hidden_size 768 --depth 12 --num_heads 12 \
+    --batch_size 64 --epochs 100
+```
+
+`num_classes` is inferred automatically (10 for CIFAR10, or one per sub-folder for ImageNet).
+Preview grids and checkpoints land in `--output_dir` (default `./runs`). Resume with
+`--resume runs/dit_cifar10_epoch_50.pth`.
+
+Enable Weights & Biases logging by passing both `--project` and `--entity`.
+
+## Sample
+
+```bash
+uv run python sample.py --checkpoint runs/dit_cifar10_epoch_100.pth \
+    --labels 0 1 2 3 4 5 6 7 8 9 --cfg_scale 4.0 --sampler ddim --num_sampling_steps 250 \
+    --output samples.png
+```
+
+## Hyperparameter sweeps
+
+Edit `sweep_config.yaml`: scalars are held fixed, lists become sweep dimensions expanded
+as a full grid. Every key must match a `--flag` in `train.py` (validated before running).
+
+```bash
+uv run python run_sweep.py --config sweep_config.yaml          # run the grid
+uv run python run_sweep.py --config sweep_config.yaml --dry-run # print commands only
+```
+
+Progress is tracked in `sweep_progress.json`, so an interrupted sweep skips completed runs
+on the next invocation. Use `--continue-on-error` to keep going past a failed run and
+`--force-rerun` to ignore prior progress.
+
+## Key design choices
+
+- **Pixel-space**, so the model patchifies raw RGB images directly — no VAE.
+- **adaLN-Zero** conditioning: timestep + class embeddings drive per-block shift/scale/gate,
+  initialized to zero so each block starts as identity.
+- **Classifier-free guidance**: a fraction (`--class_dropout_prob`) of labels are dropped to a
+  null token during training; `--cfg_scale > 1` mixes conditional/unconditional predictions at
+  sampling time.
+- **EMA** weights are used for all sampling.
